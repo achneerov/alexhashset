@@ -5,13 +5,13 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-// Use open addressing with linear probing instead of chaining
 typedef struct {
     int* values;
     uint8_t* states;  // 0 = empty, 1 = deleted, 2 = occupied
     int capacity;
     int size;
     int deleted_count;
+    int mask;  // Added to avoid repeated capacity-1 calculations
 } HashSet;
 
 HashSet* hashset_create(int initial_capacity);
@@ -28,21 +28,19 @@ bool hashset_remove(HashSet* set, int value);
 #include <string.h>
 
 #define INITIAL_CAPACITY 16
-#define LOAD_FACTOR_THRESHOLD 0.7
-#define DELETED_LOAD_THRESHOLD 0.2
+#define LOAD_FACTOR_THRESHOLD 0.77  // Increased for better space utilization
+#define DELETED_LOAD_THRESHOLD 0.24
 
 // State values
 #define EMPTY 0
 #define DELETED 1
 #define OCCUPIED 2
 
-// Optimized hash function
+// MurmurHash3-inspired hash function (faster than FNV-1a for integers)
 static inline uint32_t hash_function(uint32_t x) {
-    x ^= x >> 16;
-    x *= 0x85ebca6b;
-    x ^= x >> 13;
-    x *= 0xc2b2ae35;
-    x ^= x >> 16;
+    x = ((x >> 16) ^ x) * 0x45d9f3b;
+    x = ((x >> 16) ^ x) * 0x45d9f3b;
+    x = (x >> 16) ^ x;
     return x;
 }
 
@@ -80,6 +78,7 @@ HashSet* hashset_create(int initial_capacity) {
     set->capacity = initial_capacity;
     set->size = 0;
     set->deleted_count = 0;
+    set->mask = initial_capacity - 1;  // Precalculate mask
     
     return set;
 }
@@ -102,17 +101,18 @@ static bool hashset_resize(HashSet* set, int new_capacity) {
     }
     
     memset(new_states, EMPTY, new_capacity);
+    const int new_mask = new_capacity - 1;
     
     // Rehash all existing values
     for (int i = 0; i < set->capacity; i++) {
         if (set->states[i] == OCCUPIED) {
             int value = set->values[i];
             uint32_t hash = hash_function(value);
-            int index = hash & (new_capacity - 1);
+            int index = hash & new_mask;
             
-            // Find next empty slot
+            // Find next empty slot using linear probing
             while (new_states[index] == OCCUPIED) {
-                index = (index + 1) & (new_capacity - 1);
+                index = (index + 1) & new_mask;
             }
             
             new_values[index] = value;
@@ -125,6 +125,7 @@ static bool hashset_resize(HashSet* set, int new_capacity) {
     set->values = new_values;
     set->states = new_states;
     set->capacity = new_capacity;
+    set->mask = new_mask;
     set->deleted_count = 0;
     
     return true;
@@ -133,25 +134,25 @@ static bool hashset_resize(HashSet* set, int new_capacity) {
 bool hashset_add(HashSet* set, int value) {
     if (!set) return false;
     
-    // Check if resize is needed
-    if ((float)(set->size + set->deleted_count) / set->capacity >= LOAD_FACTOR_THRESHOLD) {
+    // Check load factor thresholds
+    if ((set->size + set->deleted_count) >= (set->capacity * LOAD_FACTOR_THRESHOLD)) {
         if (!hashset_resize(set, set->capacity * 2)) {
             return false;
         }
     }
-    // Check if cleanup of deleted entries is needed
-    else if ((float)set->deleted_count / set->capacity >= DELETED_LOAD_THRESHOLD) {
+    else if (set->deleted_count >= (set->capacity * DELETED_LOAD_THRESHOLD)) {
         if (!hashset_resize(set, set->capacity)) {
             return false;
         }
     }
     
     uint32_t hash = hash_function(value);
-    int index = hash & (set->capacity - 1);
+    int index = hash & set->mask;
     int first_deleted = -1;
     
-    // Find insertion point
-    while (true) {
+    // Optimized insertion with quadratic probing
+    int probe = 0;
+    do {
         uint8_t state = set->states[index];
         
         if (state == EMPTY) {
@@ -173,17 +174,19 @@ bool hashset_add(HashSet* set, int value) {
             return false;  // Value already exists
         }
         
-        index = (index + 1) & (set->capacity - 1);
-    }
+        // Quadratic probing: index' = (index + 1 + 2 + ... + i) mod 2^k
+        probe++;
+        index = (index + probe) & set->mask;
+    } while (true);
 }
 
 bool hashset_contains(HashSet* set, int value) {
     if (!set) return false;
     
     uint32_t hash = hash_function(value);
-    int index = hash & (set->capacity - 1);
+    int index = hash & set->mask;
     
-    while (true) {
+    do {
         uint8_t state = set->states[index];
         
         if (state == EMPTY) {
@@ -194,17 +197,17 @@ bool hashset_contains(HashSet* set, int value) {
             return true;
         }
         
-        index = (index + 1) & (set->capacity - 1);
-    }
+        index = (index + 1) & set->mask;
+    } while (true);
 }
 
 bool hashset_remove(HashSet* set, int value) {
     if (!set) return false;
     
     uint32_t hash = hash_function(value);
-    int index = hash & (set->capacity - 1);
+    int index = hash & set->mask;
     
-    while (true) {
+    do {
         uint8_t state = set->states[index];
         
         if (state == EMPTY) {
@@ -218,6 +221,6 @@ bool hashset_remove(HashSet* set, int value) {
             return true;
         }
         
-        index = (index + 1) & (set->capacity - 1);
-    }
+        index = (index + 1) & set->mask;
+    } while (true);
 }
