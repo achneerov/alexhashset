@@ -1,0 +1,6 @@
+Metadata-Version: 2.2
+Name: hashset
+Version: 1.0
+Summary: A simple hashset implementation in C
+License-File: LICENSE
+Dynamic: summary

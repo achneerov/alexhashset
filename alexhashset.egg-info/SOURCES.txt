@@ -1,0 +1,8 @@
+LICENSE
+hashset.c
+hashset_module.c
+setup.py
+alexhashset.egg-info/PKG-INFO
+alexhashset.egg-info/SOURCES.txt
+alexhashset.egg-info/dependency_links.txt
+alexhashset.egg-info/top_level.txt
