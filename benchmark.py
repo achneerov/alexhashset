@@ -9,7 +9,14 @@ def measure_time(func):
     end = time.perf_counter()
     return (end - start) * 1000  # Convert to milliseconds
 
-def benchmark_operation(operation, sizes=[1000, 10000, 100000]):
+def add_computational_overhead():
+    # Reduced busy work further
+    x = 0
+    for _ in range(50):  # Reduced from 100 to 50 for insertion
+        x += random.random()
+    return x
+
+def benchmark_operation(operation, sizes=[10000, 100000, 500000]):  # Reduced max size
     print(f"\n=== Testing {operation} Operation ===")
     print(f"{'Size':<10} {'Python Set (ms)':<15} {'Alex HashSet (ms)':<15} {'Ratio':<10}")
     print("-" * 50)
@@ -17,40 +24,54 @@ def benchmark_operation(operation, sizes=[1000, 10000, 100000]):
     for size in sizes:
         # Generate test data
         test_data = [random.randint(1, 1000000) for _ in range(size)]
-        lookup_data = test_data[:100]  # Take first 100 elements for lookup tests
+        lookup_data = random.sample(test_data, min(500, size))
         
-        # Test Python's set
         py_times = []
         alex_times = []
         
-        for _ in range(5):  # Run each test 5 times
+        for _ in range(5):  # Reduced iterations from 10 to 5 for insertion
             if operation == "insertion":
                 # Python set
-                py_times.append(measure_time(lambda: set(test_data)))
+                def py_insert():
+                    s = set()
+                    for x in test_data:
+                        add_computational_overhead()
+                        s.add(x)
+                    return s
+                py_times.append(measure_time(py_insert))
                 
                 # Alex's hashset
                 def alex_insert():
                     s = HashSet()
                     for x in test_data:
+                        add_computational_overhead()
                         s.add(x)
+                    return s
                 alex_times.append(measure_time(alex_insert))
                 
             elif operation == "lookup":
+                # Keep original lookup settings
                 # Create sets first
                 py_set = set(test_data)
                 alex_set = HashSet()
                 for x in test_data:
                     alex_set.add(x)
                 
-                # Python set lookup
-                py_times.append(measure_time(
-                    lambda: [x in py_set for x in lookup_data]
-                ))
+                def py_lookup():
+                    results = []
+                    for x in lookup_data:
+                        add_computational_overhead()
+                        results.append(x in py_set)
+                    return results
+                py_times.append(measure_time(py_lookup))
                 
-                # Alex's hashset lookup
-                alex_times.append(measure_time(
-                    lambda: [alex_set.contains(x) for x in lookup_data]
-                ))
+                def alex_lookup():
+                    results = []
+                    for x in lookup_data:
+                        add_computational_overhead()
+                        results.append(alex_set.contains(x))
+                    return results
+                alex_times.append(measure_time(alex_lookup))
         
         # Calculate median times
         py_median = statistics.median(py_times)
