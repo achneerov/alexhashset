@@ -1,4 +1,5 @@
 LICENSE
+README.md
 hashset.c
 hashset_module.c
 setup.py
